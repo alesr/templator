@@ -4,7 +4,9 @@ A type-safe HTML template rendering engine for Go.
 
 ## Features
 
-- **Type-safe template execution**: Go generics ensure your template data matches at compile time:
+- **Type-safe template execution**:
+
+Go generics ensure your template data matches at compile time:
 
   ```go
   // Define your template types
@@ -34,7 +36,9 @@ A type-safe HTML template rendering engine for Go.
   })
   ```
 
-- **File system abstraction support**: Use any filesystem implementation:
+- **File system abstraction support**:
+
+Use any filesystem implementation:
 
   ```go
   // Use embedded files
@@ -54,7 +58,9 @@ A type-safe HTML template rendering engine for Go.
   tmpl, _ := templator.New[HomeData](fsys)
   ```
 
-- **Concurrent-safe operations**: Safe for concurrent template execution:
+- **Concurrent-safe operations**:
+
+Safe for concurrent template execution:
   
   ```go
   // Safe to use from multiple goroutines
@@ -70,7 +76,9 @@ A type-safe HTML template rendering engine for Go.
   }
   ```
 
-- **Automatic template loading**: Templates are discovered and parsed automatically:
+- **Automatic template loading**:
+
+Templates are discovered and parsed automatically:
 
   ```go
   // Directory structure:
@@ -85,7 +93,9 @@ A type-safe HTML template rendering engine for Go.
   // Generated methods: ExecuteHome, ExecuteAbout, ExecuteComponentsHeader
   ```
 
-- **Custom template directory support**: Flexible template organization:
+- **Custom template directory support**: 
+
+Flexible template organization:
 
   ```go
   // Default templates directory
