@@ -2,6 +2,49 @@
 
 A type-safe HTML template rendering engine for Go.
 
+## Problem Statement
+
+Go's built-in template package lacks type safety, which can lead to runtime errors when template data doesn't match what the template expects. For example:
+
+```go
+// Traditional approach with Go templates
+tmpl := template.Must(template.ParseFiles("home.html"))
+
+// This compiles but will fail at runtime if the template expects different fields
+tmpl.Execute(w, struct {
+    WrongField string
+    MissingRequired int
+}{})
+
+// No compile-time checks for:
+// - Missing required fields
+// - Wrong field types
+// - Typos in field names
+```
+
+Templator solves this by providing compile-time type checking for your templates:
+
+```go
+// With Templator, the compiler ensures type safety
+type HomeData struct {
+    Title   string
+    Content string
+}
+
+tmpl, _ := templator.New[HomeData](fs)
+
+// ✓ Compiles - types match template requirements
+tmpl.ExecuteHome(ctx, w, HomeData{
+    Title: "Welcome",
+    Content: "Hello",
+})
+
+// ✗ Compilation error - wrong data structure
+tmpl.ExecuteHome(ctx, w, struct{
+    WrongField string
+}{})
+```
+
 ## Features
 
 - **Type-safe template execution**:
@@ -93,7 +136,7 @@ Templates are discovered and parsed automatically:
   // Generated methods: ExecuteHome, ExecuteAbout, ExecuteComponentsHeader
   ```
 
-- **Custom template directory support**: 
+- **Custom template directory support**:
 
 Flexible template organization:
 
