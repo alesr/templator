@@ -10,7 +10,6 @@ import (
 	"html/template"
 	"io"
 	"io/fs"
-	"path/filepath"
 	"sync"
 )
 
@@ -48,17 +47,25 @@ func WithFieldValidation[T any](model T) Option[T] {
 	}
 }
 
+func WithTemplateFuncs[T any](funcMap template.FuncMap) Option[T] {
+	return func(r *Registry[T]) {
+		r.config.funcMap = funcMap
+	}
+}
+
 type config[T any] struct {
 	path            string
 	validateFields  bool
 	validationModel T
+	funcMap         template.FuncMap
 }
 
 // Registry manages template handlers in a concurrent-safe manner.
 type Registry[T any] struct {
-	fs     fs.FS
-	config config[T]
-	mu     sync.RWMutex
+	fs        fs.FS
+	config    config[T]
+	mu        sync.RWMutex
+	templates map[string]*Handler[T]
 }
 
 // Handler manages a specific template instance with type-safe data handling.
@@ -76,6 +83,7 @@ func NewRegistry[T any](fsys fs.FS, opts ...Option[T]) (*Registry[T], error) {
 		config: config[T]{
 			path: DefaultTemplateDir,
 		},
+		templates: make(map[string]*Handler[T]),
 	}
 	for _, opt := range opts {
 		opt(reg)
@@ -88,23 +96,28 @@ func NewRegistry[T any](fsys fs.FS, opts ...Option[T]) (*Registry[T], error) {
 // Returns an error if the template cannot be parsed.
 func (r *Registry[T]) Get(name string) (*Handler[T], error) {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
+	if h, ok := r.templates[name]; ok {
+		r.mu.RUnlock()
+		return h, nil
+	}
+	r.mu.RUnlock()
 
-	tmpl, err := template.ParseFS(r.fs, filepath.Join(r.config.path, name+".html"))
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// Check again in case another goroutine has loaded the template
+	if h, ok := r.templates[name]; ok {
+		return h, nil
+	}
+
+	tmpl, err := template.New(name+".html").Funcs(r.config.funcMap).ParseFS(r.fs, r.config.path+"/"+name+".html")
 	if err != nil {
 		return nil, err
 	}
 
-	if r.config.validateFields {
-		if err := validateTemplateFields(name, tmpl.Tree, r.config.validationModel); err != nil {
-			return nil, err
-		}
-	}
-
-	return &Handler[T]{
-		tmpl: tmpl,
-		reg:  r,
-	}, nil
+	handler := &Handler[T]{tmpl: tmpl}
+	r.templates[name] = handler
+	return handler, nil
 }
 
 // Execute renders the template with the provided data and writes the output to the writer.
