@@ -299,3 +299,17 @@ Contributions are welcome! Here's how you can help:
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+
+3. Make your changes
+4. Run tests (`go test ./...`)
+5. Commit your changes (`git commit -m 'Add amazing feature'`)
+6. Push to the branch (`git push origin feature/amazing-feature`)
+7. Open a Pull Request
+
+### Development Requirements
+
+- Go 1.21 or higher
+
+## License
+
+MIT
