@@ -41,11 +41,11 @@ jobs:
       - name: Run tests
         run: go test -v -count=1 --cover --race --timeout=30s ./...
 
-      - name: Upload test results to Codecov
-        if: ${{ !cancelled() }}
-        uses: codecov/test-results-action@v1
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          slug: alesr/templator
 
   verify:
     runs-on: ubuntu-latest
