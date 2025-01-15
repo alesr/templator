@@ -35,16 +35,30 @@ type Option[T any] func(*Registry[T])
 func WithTemplatesPath[T any](path string) Option[T] {
 	return func(r *Registry[T]) {
 		if path != "" {
-			r.path = path
+			r.config.path = path
 		}
 	}
 }
 
+// WithFieldValidation enables template field validation against the provided model
+func WithFieldValidation[T any](model T) Option[T] {
+	return func(r *Registry[T]) {
+		r.config.validateFields = true
+		r.config.validationModel = model
+	}
+}
+
+type config[T any] struct {
+	path            string
+	validateFields  bool
+	validationModel T
+}
+
 // Registry manages template handlers in a concurrent-safe manner.
 type Registry[T any] struct {
-	fs   fs.FS
-	path string
-	mu   sync.RWMutex
+	fs     fs.FS
+	config config[T]
+	mu     sync.RWMutex
 }
 
 // Handler manages a specific template instance with type-safe data handling.
@@ -58,10 +72,11 @@ type Handler[T any] struct {
 // It accepts a filesystem interface and variadic options for customization.
 func NewRegistry[T any](fsys fs.FS, opts ...Option[T]) (*Registry[T], error) {
 	reg := &Registry[T]{
-		fs:   fsys,
-		path: DefaultTemplateDir,
+		fs: fsys,
+		config: config[T]{
+			path: DefaultTemplateDir,
+		},
 	}
-
 	for _, opt := range opts {
 		opt(reg)
 	}
@@ -75,9 +90,15 @@ func (r *Registry[T]) Get(name string) (*Handler[T], error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	tmpl, err := template.ParseFS(r.fs, filepath.Join(r.path, name+".html"))
+	tmpl, err := template.ParseFS(r.fs, filepath.Join(r.config.path, name+".html"))
 	if err != nil {
 		return nil, err
+	}
+
+	if r.config.validateFields {
+		if err := validateTemplateFields(name, tmpl.Tree, r.config.validationModel); err != nil {
+			return nil, err
+		}
 	}
 
 	return &Handler[T]{
