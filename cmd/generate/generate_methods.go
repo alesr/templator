@@ -64,17 +64,18 @@ func main() {
 }
 
 func parseFlags() config {
-	templateDir := flag.String(
+	flagSet := flag.NewFlagSet("generate", flag.ExitOnError)
+	templateDir := flagSet.String(
 		"templates",
 		templator.DefaultTemplateDir,
 		"directory containing the template files",
 	)
-	outputFile := flag.String(
+	outputFile := flagSet.String(
 		"out",
 		"./templator_methods.go",
 		"output file for generated methods",
 	)
-	flag.Parse()
+	flagSet.Parse(os.Args[1:])
 	return config{*templateDir, *outputFile}
 }
 
