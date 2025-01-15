@@ -28,7 +28,6 @@ const (
 type Extension string
 
 // Option configures a Registry instance.
-// It follows the functional options pattern for flexible configuration.
 type Option[T any] func(*Registry[T])
 
 // WithTemplatesPath returns an Option that sets a custom template directory path.
@@ -42,7 +41,6 @@ func WithTemplatesPath[T any](path string) Option[T] {
 }
 
 // Registry manages template handlers in a concurrent-safe manner.
-// It uses generics to ensure type safety when rendering templates.
 type Registry[T any] struct {
 	fs   fs.FS
 	path string
@@ -99,14 +97,4 @@ func (h *Handler[T]) Execute(ctx context.Context, w io.Writer, data T) error {
 func (h *Handler[T]) WithFuncs(funcMap template.FuncMap) *Handler[T] {
 	h.tmpl = h.tmpl.Funcs(funcMap)
 	return h
-}
-
-// contains is a helper function that checks if a string slice contains a specific value.
-func contains(slice []string, value string) bool {
-	for _, v := range slice {
-		if v == value {
-			return true
-		}
-	}
-	return false
 }
