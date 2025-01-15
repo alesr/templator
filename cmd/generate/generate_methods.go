@@ -1,3 +1,20 @@
+// Package main provides a code generator for creating type-safe template handler methods.
+// It scans a directory for HTML templates and generates corresponding Go methods that
+// can be used to retrieve template handlers from a Registry.
+//
+// The generator creates methods following this pattern for each template:
+//   - Template path: "path/to/template.html"
+//   - Generated method: GetPathToTemplate()
+//
+// Usage:
+//   go run generate_methods.go [flags]
+//
+// Flags:
+//   -templates string
+//     	Directory containing the template files (default "templates")
+//   -out string
+//     	Output file for generated methods (default "./templator_methods.go")
+
 package main
 
 import (
@@ -27,21 +44,22 @@ func (r *Registry[T]) {{.MethodName}}() (*Handler[T], error) {
 }
 {{end}}`
 
-type TemplateData struct {
-	DataType     string
-	MethodName   string
-	TemplateName string
-}
+type (
+	TemplateData struct {
+		DataType     string
+		MethodName   string
+		TemplateName string
+	}
+	config struct {
+		templateDir string
+		outputFile  string
+	}
+)
 
 func main() {
 	cfg := parseFlags()
 	tmpl := loadTemplateGenerator()
 	generateMethods(cfg, tmpl)
-}
-
-type config struct {
-	templateDir string
-	outputFile  string
 }
 
 func parseFlags() config {
@@ -50,7 +68,6 @@ func parseFlags() config {
 		templator.DefaultTemplateDir,
 		"directory containing the template files",
 	)
-
 	outputFile := flag.String(
 		"out",
 		"./templator_methods.go",
@@ -74,11 +91,9 @@ func generateMethods(cfg config, tmpl *template.Template) {
 	if err := writeHeader(&buf, tmpl); err != nil {
 		panic(fmt.Errorf("failed to write header: %w", err))
 	}
-
 	if err := processTemplates(cfg.templateDir, &buf, tmpl); err != nil {
 		panic(fmt.Errorf("failed to process templates: %w", err))
 	}
-
 	if err := writeOutput(cfg.outputFile, &buf); err != nil {
 		panic(fmt.Errorf("failed to write output: %w", err))
 	}
@@ -91,10 +106,12 @@ func writeHeader(buf *bytes.Buffer, tmpl *template.Template) error {
 
 func processTemplates(templateDir string, buf *bytes.Buffer, tmpl *template.Template) error {
 	caser := cases.Title(language.English)
-
 	return filepath.Walk(templateDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
-			return err
+		if err != nil {
+			return fmt.Errorf("failed to walk directory: %w", err)
+		}
+		if info.IsDir() {
+			return nil
 		}
 		if filepath.Ext(path) != string(templator.ExtensionHTML) {
 			return nil
@@ -108,28 +125,23 @@ func generateTemplateMethod(path, templateDir string, buf *bytes.Buffer, tmpl *t
 	if err != nil {
 		return fmt.Errorf("failed to get relative path: %w", err)
 	}
-
 	data, err := buildTemplateData(relPath, caser)
 	if err != nil {
 		return fmt.Errorf("failed to build template data: %w", err)
 	}
-
 	if err := tmpl.ExecuteTemplate(buf, "method", data); err != nil {
 		return fmt.Errorf("failed to execute template: %w", err)
 	}
-
 	buf.WriteString("\n")
 	return nil
 }
 
 func buildTemplateData(relPath string, caser cases.Caser) (TemplateData, error) {
 	basePath := strings.TrimSuffix(relPath, string(templator.ExtensionHTML))
-
 	parts := strings.Split(basePath, string(filepath.Separator))
 	for i, part := range parts {
 		parts[i] = caser.String(part)
 	}
-
 	return TemplateData{
 		MethodName:   "Get" + strings.Join(parts, ""),
 		TemplateName: filepath.ToSlash(basePath),
