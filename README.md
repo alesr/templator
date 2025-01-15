@@ -2,6 +2,20 @@
 
 A type-safe HTML template rendering engine for Go.
 
+> **Note**: This is an experimental project in active development. While it's stable enough for use, expect possible API changes. Feedback and contributions are welcome!
+
+## Table of Contents
+
+- [Problem Statement](#problem-statement)
+- [Features](#features)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Usage Examples](#usage-examples)
+- [Template Generation](#template-generation)
+- [Configuration](#configuration)
+- [Contributing](#contributing)
+- [License](#license)
+
 ## Problem Statement
 
 Go's built-in template package lacks type safety, which can lead to runtime errors when template data doesn't match what the template expects. For example:
@@ -25,212 +39,258 @@ tmpl.Execute(w, struct {
 Templator solves this by providing compile-time type checking for your templates:
 
 ```go
-// With Templator, the compiler ensures type safety
-type HomeData struct {
-    Title   string
-    Content string
-}
-
-tmpl, _ := templator.New[HomeData](fs)
-
-// ✓ Compiles - types match template requirements
-tmpl.ExecuteHome(ctx, w, HomeData{
-    Title: "Welcome",
-    Content: "Hello",
-})
-
-// ✗ Compilation error - wrong data structure
-tmpl.ExecuteHome(ctx, w, struct{
-    WrongField string
-}{})
-```
-
-## Features
-
-- **Type-safe template execution**:
-
-Go generics ensure your template data matches at compile time:
-
-  ```go
-  // Define your template types
-  type HomeData struct {
-      Title string
-      Message string
-  }
-
-  type AboutData struct {
-      Company string
-      Year int
-  }
-
-  // The compiler enforces correct data types
-  tmpl, _ := templator.New[HomeData](fs)
-  
-  // ✅ This compiles - types match
-  tmpl.ExecuteHome(ctx, w, HomeData{
-      Title: "Welcome",
-      Message: "Hello",
-  })
-
-  // ❌ This won't compile - wrong data type
-  tmpl.ExecuteHome(ctx, w, AboutData{
-      Company: "Acme",
-      Year: 2024,
-  })
-  ```
-
-- **File system abstraction support**:
-
-Use any filesystem implementation:
-
-  ```go
-  // Use embedded files
-  //go:embed templates/*
-  var embedFS embed.FS
-  tmpl, _ := templator.New[HomeData](embedFS)
-
-  // Use os filesystem
-  tmpl, _ := templator.New[HomeData](os.DirFS("./templates"))
-
-  // Use in-memory filesystem for testing
-  fsys := fstest.MapFS{
-      "templates/home.html": &fstest.MapFile{
-          Data: []byte("<h1>{{.Title}}</h1>"),
-      },
-  }
-  tmpl, _ := templator.New[HomeData](fsys)
-  ```
-
-- **Concurrent-safe operations**:
-
-Safe for concurrent template execution:
-  
-  ```go
-  // Safe to use from multiple goroutines
-  tmpl, _ := templator.New[HomeData](fs)
-  
-  var wg sync.WaitGroup
-  for i := 0; i < 100; i++ {
-      wg.Add(1)
-      go func() {
-          defer wg.Done()
-          tmpl.ExecuteHome(ctx, writer, data) // Thread-safe
-      }()
-  }
-  ```
-
-- **Automatic template loading**:
-
-Templates are discovered and parsed automatically:
-
-  ```go
-  // Directory structure:
-  // templates/
-  //   ├── home.html
-  //   ├── about.html
-  //   └── components/
-  //       └── header.html
-  
-  // All templates are loaded and parsed automatically
-  tmpl, _ := templator.New[HomeData](fs)
-  // Generated methods: ExecuteHome, ExecuteAbout, ExecuteComponentsHeader
-  ```
-
-- **Custom template directory support**:
-
-Flexible template organization:
-
-  ```go
-  // Default templates directory
-  tmpl, _ := templator.New[HomeData](fs)
-  
-  // Custom directory
-  tmpl, _ := templator.New[HomeData](
-      fs,
-      templator.WithTemplatesPath[HomeData]("views"),
-  )
-  ```
-
-## Installation
-
-```go
-go install github.com/alesr/templator
-```
-
-## Usage
-
-```go
-import "github.com/alesr/templator"
-
 // Define your template data type
 type HomeData struct {
     Title   string
     Content string
 }
 
-// Initialize templator with the embedded file system
-tmpl, err := templator.New[HomeData](embedFS)
-if err != nil {
-    log.Fatal(err)
-}
+// Initialize registry with type parameter
+reg, _ := templator.NewRegistry[HomeData](fs)
 
-// Execute the template
-data := HomeData{
-    Title:   "Welcome",
-    Content: "Hello World",
-}
+// Get type-safe handler and execute template
+home, _ := reg.GetHome()
+home.Execute(ctx, w, HomeData{
+    Title: "Welcome",
+    Content: "Hello",
+})
 
-if err := tmpl.ExecuteHome(ctx, w, data); err != nil {
-    log.Fatal(err)
-}
+// Won't compile - wrong data structure
+home.Execute(ctx, w, struct{
+    WrongField string
+}{})
 ```
 
-## Template Method Generation
+## Features
 
-Templator uses Go's `go:generate` to automatically create type-safe template execution methods. Each HTML template gets its own strongly-typed method.
-
-### How it works
-
-1. Place your HTML templates in the `templates` directory
-2. Run `go generate` to create type-safe methods
-3. The generator supports these flags:
-
-   ```bash
-   # Default values shown
-   go run cmd/generate/generate_methods.go \
-     -templates="templates"    # Source templates directory
-     -out="templator_methods.go"    # Output file location
-   ```
-
-4. Type-safe methods are generated for each template, following the pattern:
-   - `templates/home.html` → `ExecuteHome` method
-   - `templates/user/profile.html` → `ExecuteUserProfile` method
-
-Example:
-
-- Template: `templates/home.html`
-- Generated:
-
-  ```go
-  type HomeData struct {
-      Title string
-      Content string
-  }
-  
-  func (t *Templator[HomeData]) ExecuteHome(ctx context.Context, w io.Writer, data HomeData) error
-  ```
-
-### Directory Structure
-
-## Options
+- **Type-safe template handling**:
 
 ```go
-// Custom template directory
-tmpl, err := templator.New[HomeData](
-    embedFS, 
-    templator.WithTemplatesPath[HomeData]("custom/path"),
+// Define your template types
+type HomeData struct {
+    Title   string
+    Message string
+}
+
+type AboutData struct {
+    Company string
+    Year    int
+}
+
+// Get type-safe handlers
+reg := templator.NewRegistry[HomeData](fs)
+home, _ := reg.GetHome()
+about, _ := reg.GetAbout()
+
+// ✅ Compiles - types match
+home.Execute(ctx, w, HomeData{
+    Title: "Welcome",
+    Message: "Hello",
+})
+
+// ❌ Won't compile - wrong data type
+home.Execute(ctx, w, AboutData{
+    Company: "Acme",
+    Year: 2025,
+})
+```
+
+- **Template customization**:
+
+```go
+// Add template functions
+home.WithFuncs(template.FuncMap{
+    "upper": strings.ToUpper,
+}).Execute(ctx, w, data)
+```
+
+- **File system abstraction support**:
+
+```go
+// Use embedded files
+//go:embed templates/*
+var embedFS embed.FS
+reg := templator.NewRegistry[HomeData](embedFS)
+
+// Use os filesystem
+reg := templator.NewRegistry[HomeData](os.DirFS("./templates"))
+
+// Use in-memory filesystem for testing
+fsys := fstest.MapFS{
+    "templates/home.html": &fstest.MapFile{
+        Data: []byte("<h1>{{.Title}}</h1>"),
+    },
+}
+reg := templator.NewRegistry[HomeData](fsys)
+```
+
+- **Concurrent-safe operations**:
+
+```go
+reg := templator.NewRegistry[HomeData](fs)
+home, _ := reg.GetHome()
+
+var wg sync.WaitGroup
+for i := 0; i < 100; i++ {
+    wg.Add(1)
+    go func() {
+        defer wg.Done()
+        home.Execute(ctx, writer, data) // Thread-safe
+    }()
+}
+```
+
+## Installation
+
+```bash
+go install github.com/alesr/templator
+```
+
+## Quick Start
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    "os"
+
+    "github.com/alesr/templator"
+)
+
+// Define your template data
+type HomeData struct {
+    Title   string
+    Content string
+}
+
+func main() {
+    // Use the filesystem of your choice
+    fs := os.DirFS(".")
+
+    // Initialize registry with your data type
+    reg, err := templator.NewRegistry[HomeData](fs)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Get type-safe handler for home template
+    home, err := reg.GetHome()
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Execute template with proper data
+    err = home.Execute(context.Background(), os.Stdout, HomeData{
+        Title:   "Welcome",
+        Content: "Hello, World!",
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+## Usage Examples
+
+### Type-Safe Templates
+
+```go
+// Define different data types for different templates
+type HomeData struct {
+    Title    string
+    Content  string
+}
+
+type AboutData struct {
+    Company  string
+    Year     int
+}
+
+// Create registries for different template types
+homeReg := templator.NewRegistry[HomeData](fs)
+aboutReg := templator.NewRegistry[AboutData](fs)
+
+// Get handlers
+home, _ := homeReg.GetHome()
+about, _ := aboutReg.GetAbout()
+
+// Type safety enforced at compile time
+home.Execute(ctx, w, HomeData{...})  // ✅ Compiles
+home.Execute(ctx, w, AboutData{...}) // ❌ Compile error
+```
+
+### Template Functions
+
+```go
+import "strings"
+
+home.WithFuncs(template.FuncMap{
+    "upper": strings.ToUpper,
+    "join": strings.Join,
+}).Execute(ctx, w, data)
+```
+
+### File System Support
+
+```go
+// Embedded FS
+//go:embed templates/*
+var embedFS embed.FS
+reg := templator.NewRegistry[HomeData](embedFS)
+
+// OS File System
+reg := templator.NewRegistry[HomeData](os.DirFS("./templates"))
+
+// In-Memory (testing)
+fsys := fstest.MapFS{
+    "templates/home.html": &fstest.MapFile{
+        Data: []byte(`<h1>{{.Title}}</h1>`),
+    },
+}
+reg := templator.NewRegistry[HomeData](fsys)
+```
+
+## Template Generation
+
+Templates are automatically discovered and type-safe methods are generated:
+
+```zsh
+templates/
+├── home.html           -> reg.GetHome()
+├── about.html          -> reg.GetAbout()
+└── components/
+    └── header.html     -> reg.GetComponentsHeader()
+
+# Generate methods
+go generate ./...
+```
+
+## Configuration
+
+```go
+reg, err := templator.NewRegistry[HomeData](
+    fs,
+    templator.WithTemplatesPath[HomeData]("views"),
 )
 ```
+
+## Contributing
+
+Contributions are welcome! Here's how you can help:
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes
+4. Run tests (`go test ./...`)
+5. Commit your changes (`git commit -m 'Add amazing feature'`)
+6. Push to the branch (`git push origin feature/amazing-feature`)
+7. Open a Pull Request
+
+### Development Requirements
+
+- Go 1.21 or higher
 
 ## License
 
