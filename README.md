@@ -1,5 +1,7 @@
 # Templator
 
+[![codecov](https://codecov.io/gh/alesr/templator/graph/badge.svg?token=HiYBMXeIbg)](https://codecov.io/gh/alesr/templator)
+
 A type-safe HTML template rendering engine for Go.
 
 > **Note**: This is an experimental project in active development. While it's stable enough for use, expect possible API changes. Feedback and contributions are welcome!
