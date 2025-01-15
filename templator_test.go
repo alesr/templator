@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"html/template" // Change from "text/template" to "html/template"
+	"html/template"
 	"strings"
 	"sync"
 	"testing"
@@ -338,6 +338,92 @@ func TestRegistry_Options(t *testing.T) {
 			} else {
 				require.Error(t, err)
 			}
+		})
+	}
+}
+
+func TestWithFuncs(t *testing.T) {
+	t.Parallel()
+
+	funcMap := template.FuncMap{
+		"upper": strings.ToUpper,
+		"lower": strings.ToLower,
+	}
+
+	reg, err := NewRegistry[TestData](fstest.MapFS{}, WithTemplateFuncs[TestData](funcMap))
+	require.NoError(t, err)
+	require.Equal(t, funcMap, reg.config.funcMap)
+}
+
+func TestWithFieldValidation(t *testing.T) {
+	t.Parallel()
+
+	type ComplexData struct {
+		Title    string
+		Content  string
+		SubTitle *string
+	}
+
+	tests := []struct {
+		name        string
+		templateStr string
+		model       ComplexData
+		data        ComplexData
+		shouldError bool
+		expectedErr string
+	}{
+		{
+			name:        "valid fields",
+			templateStr: "{{.Title}} {{.Content}}",
+			model:       ComplexData{},
+			data:        ComplexData{Title: "Test", Content: "Content"},
+			shouldError: false,
+		},
+		{
+			name:        "invalid field usage",
+			templateStr: "{{.InvalidField}}",
+			model:       ComplexData{},
+			data:        ComplexData{},
+			shouldError: true,
+			expectedErr: "field 'InvalidField' not found",
+		},
+		{
+			name:        "nested pointer field valid",
+			templateStr: "{{if .SubTitle}}{{.SubTitle}}{{end}}",
+			model:       ComplexData{},
+			data:        ComplexData{},
+			shouldError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			fs := fstest.MapFS{
+				"templates/test.html": &fstest.MapFile{
+					Data: []byte(tt.templateStr),
+				},
+			}
+
+			reg, err := NewRegistry[ComplexData](fs, WithFieldValidation(tt.model))
+			require.NoError(t, err)
+			require.True(t, reg.config.validateFields)
+			require.Equal(t, tt.model, reg.config.validationModel)
+
+			handler, err := reg.Get("test")
+			if tt.shouldError {
+				require.Error(t, err)
+				if tt.expectedErr != "" {
+					require.Contains(t, err.Error(), tt.expectedErr)
+				}
+				return
+			}
+
+			require.NoError(t, err)
+			var buf bytes.Buffer
+			err = handler.Execute(context.Background(), &buf, tt.data)
+			require.NoError(t, err)
 		})
 	}
 }
