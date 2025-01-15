@@ -65,100 +65,11 @@ home.Execute(ctx, w, struct{
 
 ## Features
 
-- **Type-safe template handling**:
-
-```go
-// Define your template types
-type HomeData struct {
-    Title   string
-    Message string
-}
-
-type AboutData struct {
-    Company string
-    Year    int
-}
-
-// Get type-safe handlers
-reg := templator.NewRegistry[HomeData](fs)
-home, _ := reg.GetHome()
-about, _ := reg.GetAbout()
-
-// ✅ Compiles - types match
-home.Execute(ctx, w, HomeData{
-    Title: "Welcome",
-    Message: "Hello",
-})
-
-// ❌ Won't compile - wrong data type
-home.Execute(ctx, w, AboutData{
-    Company: "Acme",
-    Year: 2025,
-})
-```
-
-- **Template customization**:
-
-```go
-// Add template functions
-home.WithFuncs(template.FuncMap{
-    "upper": strings.ToUpper,
-}).Execute(ctx, w, data)
-```
-
-- **File system abstraction support**:
-
-```go
-// Use embedded files
-//go:embed templates/*
-var embedFS embed.FS
-reg := templator.NewRegistry[HomeData](embedFS)
-
-// Use os filesystem
-reg := templator.NewRegistry[HomeData](os.DirFS("./templates"))
-
-// Use in-memory filesystem for testing
-fsys := fstest.MapFS{
-    "templates/home.html": &fstest.MapFile{
-        Data: []byte("<h1>{{.Title}}</h1>"),
-    },
-}
-reg := templator.NewRegistry[HomeData](fsys)
-```
-
-- **Concurrent-safe operations**:
-
-```go
-reg := templator.NewRegistry[HomeData](fs)
-home, _ := reg.GetHome()
-
-var wg sync.WaitGroup
-for i := 0; i < 100; i++ {
-    wg.Add(1)
-    go func() {
-        defer wg.Done()
-        home.Execute(ctx, writer, data) // Thread-safe
-    }()
-}
-```
-
-- **Template field validation**:
-
-```go
-type PageData struct {
-    Title string
-    Content string
-}
-
-// Enable field validation at registry creation
-reg, err := templator.NewRegistry[PageData](
-    fs,
-    templator.WithFieldValidation(PageData{}),
-)
-
-// Will fail early if template uses undefined fields
-handler, err := reg.Get("template") // Error if template references non-existent fields
-```
+- Type-safe template execution with generics
+- Concurrent-safe template management
+- Custom template functions support
+- Clean and simple API
+- HTML escaping by default
 
 ## Installation
 
@@ -241,15 +152,21 @@ home.Execute(ctx, w, HomeData{...})  // ✅ Compiles
 home.Execute(ctx, w, AboutData{...}) // ❌ Compile error
 ```
 
-### Template Functions
+### Using Template Functions
 
 ```go
-import "strings"
-
-home.WithFuncs(template.FuncMap{
+// Define your custom functions
+funcMap := template.FuncMap{
     "upper": strings.ToUpper,
-    "join": strings.Join,
-}).Execute(ctx, w, data)
+    "lower": strings.ToLower,
+}
+
+// Create registry with functions
+reg, err := templator.NewRegistry[PageData](fs, 
+    templator.WithTemplateFuncs[PageData](funcMap))
+
+// Use functions in your templates:
+// <h1>{{.Title | upper}}</h1>
 ```
 
 ### File System Support
