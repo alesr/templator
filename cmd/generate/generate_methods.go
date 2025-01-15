@@ -103,7 +103,7 @@ func generateTemplateMethod(path, templateDir string, buf *bytes.Buffer, tmpl *t
 	}
 
 	if err := tmpl.ExecuteTemplate(buf, "method", data); err != nil {
-		return fmt.Errorf("failed to execute template for %s: %w", path, err)
+		return fmt.Errorf("failed to execute template: %w", err)
 	}
 
 	buf.WriteString("\n")
@@ -119,8 +119,7 @@ func buildTemplateData(relPath string, caser cases.Caser) (TemplateData, error) 
 	}
 
 	return TemplateData{
-		DataType:     strings.Join(parts, "") + "Data",
-		MethodName:   "Execute" + strings.Join(parts, ""),
+		MethodName:   "Get" + strings.Join(parts, ""),
 		TemplateName: filepath.ToSlash(basePath),
 	}, nil
 }
