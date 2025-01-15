@@ -110,12 +110,26 @@ func (r *Registry[T]) Get(name string) (*Handler[T], error) {
 		return h, nil
 	}
 
-	tmpl, err := template.New(name+".html").Funcs(r.config.funcMap).ParseFS(r.fs, r.config.path+"/"+name+".html")
+	// Read template content first
+	content, err := fs.ReadFile(r.fs, r.config.path+"/"+name+".html")
 	if err != nil {
 		return nil, err
 	}
 
-	handler := &Handler[T]{tmpl: tmpl}
+	// Validate fields if enabled - validate content before parsing
+	if r.config.validateFields {
+		if err := validateTemplateFields(name, string(content), r.config.validationModel); err != nil {
+			return nil, err
+		}
+	}
+
+	// Parse template after validation
+	tmpl, err := template.New(name + ".html").Funcs(r.config.funcMap).Parse(string(content))
+	if err != nil {
+		return nil, err
+	}
+
+	handler := &Handler[T]{tmpl: tmpl, reg: r}
 	r.templates[name] = handler
 	return handler, nil
 }
