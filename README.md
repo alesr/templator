@@ -220,6 +220,16 @@ if err != nil {
 }
 
 handler, err := reg.Get("invalid")  // ❌ Error: "template 'invalid' validation error: Author - field 'Author' not found in type ArticleData"
+
+// The validation error provides:
+// - Template name
+// - Invalid field path
+// - Detailed error message
+if validErr, ok := err.(*templator.ValidationError); ok {
+    fmt.Printf("Template: %s\n", validErr.TemplateName)
+    fmt.Printf("Invalid field: %s\n", validErr.FieldPath)
+    fmt.Printf("Error: %v\n", validErr.Err)
+}
 ```
 
 This validation happens when loading the template, not during execution, helping catch field mismatches early in development.
