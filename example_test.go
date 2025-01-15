@@ -9,52 +9,45 @@ import (
 	"github.com/alesr/templator"
 )
 
+// TestData represents the structure used for template data
+type TestData struct {
+	Title   string
+	Content string
+}
+
 func Example() {
-	// Create a virtual filesystem for testing
+	// Create template files in memory
 	fs := fstest.MapFS{
 		"templates/home.html": &fstest.MapFile{
 			Data: []byte(`<h1>{{.Title}}</h1><p>{{.Content}}</p>`),
 		},
-		"templates/about/team.html": &fstest.MapFile{
-			Data: []byte(`<h2>{{.TeamName}}</h2><p>{{.Description}}</p>`),
+		"templates/team.html": &fstest.MapFile{
+			Data: []byte(`<h2>{{.Title}}</h2><p>{{.Content}}</p>`),
 		},
 	}
 
-	// Example 1: Basic template with HomeData
-	type HomeData struct {
-		Title   string
-		Content string
-	}
+	// Create a new registry
+	reg, _ := templator.NewRegistry[TestData](fs)
 
-	homeReg, _ := templator.NewRegistry[HomeData](fs)
-	home, _ := homeReg.Get("home")
-
-	var buf bytes.Buffer
-	home.Execute(context.Background(), &buf, HomeData{
+	// Get and execute home template
+	home, _ := reg.Get("home")
+	var homeOutput bytes.Buffer
+	home.Execute(context.Background(), &homeOutput, TestData{
 		Title:   "Welcome",
 		Content: "Hello, World!",
 	})
 
-	fmt.Println("Home template output:")
-	fmt.Println(buf.String())
-
-	// Example 2: Template with custom path and different data type
-	type TeamData struct {
-		TeamName    string
-		Description string
-	}
-
-	teamReg, _ := templator.NewRegistry[TeamData](fs)
-	team, _ := teamReg.Get("about/team")
-
-	buf.Reset()
-	team.Execute(context.Background(), &buf, TeamData{
-		TeamName:    "Engineering",
-		Description: "Building amazing things",
+	// Get and execute team template
+	team, _ := reg.Get("team")
+	var teamOutput bytes.Buffer
+	team.Execute(context.Background(), &teamOutput, TestData{
+		Title:   "Engineering",
+		Content: "Building amazing things",
 	})
 
-	fmt.Println("\nTeam template output:")
-	fmt.Println(buf.String())
+	// Print the outputs
+	fmt.Printf("Home template output:\n%s\n\n", homeOutput.String())
+	fmt.Printf("Team template output:\n%s\n", teamOutput.String())
 
 	// Output:
 	// Home template output:

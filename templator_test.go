@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"html/template" // Change from "text/template" to "html/template"
 	"strings"
 	"sync"
 	"testing"
 	"testing/fstest"
-	"text/template"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -232,17 +232,15 @@ func TestHandler_WithFuncs(t *testing.T) {
 		},
 	}
 
-	reg, err := NewRegistry[TestData](fs)
-	require.NoError(t, err)
-
-	handler, err := reg.Get("withfunc")
-	require.NoError(t, err)
-
 	funcMap := template.FuncMap{
 		"upper": strings.ToUpper,
 	}
 
-	handler = handler.WithFuncs(funcMap)
+	reg, err := NewRegistry[TestData](fs, WithTemplateFuncs[TestData](funcMap))
+	require.NoError(t, err)
+
+	handler, err := reg.Get("withfunc")
+	require.NoError(t, err)
 
 	var buf bytes.Buffer
 	err = handler.Execute(context.Background(), &buf, TestData{Title: "hello"})
