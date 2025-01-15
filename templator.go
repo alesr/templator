@@ -3,8 +3,9 @@ package templator
 //go:generate go run ./cmd/generate/generate_methods.go
 
 import (
-	"fmt"
+	"context"
 	"html/template"
+	"io"
 	"io/fs"
 	"path/filepath"
 	"sync"
@@ -20,71 +21,71 @@ const (
 
 type Extension string
 
-type Templator[T any] struct {
-	templates map[string]*template.Template
-	fs        fs.FS
-	path      string
-	ext       string
-	mu        sync.RWMutex
-}
+// Option configures a Registry
+type Option[T any] func(*Registry[T])
 
-// Option type for customizations
-type Option[T any] func(*Templator[T])
-
+// WithTemplatesPath sets a custom template directory path
 func WithTemplatesPath[T any](path string) Option[T] {
-	return func(t *Templator[T]) {
-		if path == "" {
-			return
+	return func(r *Registry[T]) {
+		if path != "" {
+			r.path = path
 		}
-		t.path = path
 	}
 }
 
-func New[T any](fsys fs.FS, opts ...Option[T]) (*Templator[T], error) {
-	t := &Templator[T]{
-		templates: make(map[string]*template.Template),
-		fs:        fsys,
-		path:      DefaultTemplateDir,
-		ext:       "." + DefaultTemplateExt, // Add dot prefix
+// Registry manages all template handlers
+type Registry[T any] struct {
+	fs   fs.FS
+	path string
+	mu   sync.RWMutex
+}
+
+// Handler manages a specific template
+type Handler[T any] struct {
+	tmpl *template.Template
+	reg  *Registry[T]
+}
+
+func NewRegistry[T any](fsys fs.FS, opts ...Option[T]) (*Registry[T], error) {
+	reg := &Registry[T]{
+		fs:   fsys,
+		path: DefaultTemplateDir,
 	}
 
 	for _, opt := range opts {
-		opt(t)
+		opt(reg)
 	}
-
-	if err := t.loadTemplates(); err != nil {
-		return nil, fmt.Errorf("error loading templates: %w", err)
-	}
-	return t, nil
+	return reg, nil
 }
 
-func (t *Templator[T]) loadTemplates() error {
-	return fs.WalkDir(t.fs, t.path, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
+// Get returns a type-safe handler for a specific template
+func (r *Registry[T]) Get(name string) (*Handler[T], error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 
-		if d.IsDir() {
-			// Skip directories
-			return nil
-		}
+	tmpl, err := template.ParseFS(r.fs, filepath.Join(r.path, name+".html"))
+	if err != nil {
+		return nil, err
+	}
 
-		ext := filepath.Ext(path)
-		if ext != t.ext {
-			return nil
-		}
+	return &Handler[T]{
+		tmpl: tmpl,
+		reg:  r,
+	}, nil
+}
 
-		tmpl, err := template.ParseFS(t.fs, path)
-		if err != nil {
-			return fmt.Errorf("error parsing template %s: %w", path, err)
-		}
+// Usage example:
+// handler := reg.Get[HomeData]("home")
 
-		t.mu.Lock()
-		t.templates[path] = tmpl
-		t.mu.Unlock()
+// Execute executes the template with type-safe data
+func (h *Handler[T]) Execute(ctx context.Context, w io.Writer, data T) error {
+	return h.tmpl.Execute(w, data)
+}
 
-		return nil
-	})
+// WithFuncs adds template functions
+func (h *Handler[T]) WithFuncs(funcMap template.FuncMap) *Handler[T] {
+	h.tmpl = h.tmpl.Funcs(funcMap)
+	return h
 }
 
 func contains(slice []string, value string) bool {
