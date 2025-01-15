@@ -9,12 +9,6 @@ import (
 	"github.com/alesr/templator"
 )
 
-// TestData represents the structure used for template data
-type TestData struct {
-	Title   string
-	Content string
-}
-
 func Example() {
 	// Create template files in memory
 	fs := fstest.MapFS{
@@ -27,12 +21,12 @@ func Example() {
 	}
 
 	// Create a new registry
-	reg, _ := templator.NewRegistry[TestData](fs)
+	reg, _ := templator.NewRegistry[templator.TestData](fs)
 
 	// Get and execute home template
 	home, _ := reg.Get("home")
 	var homeOutput bytes.Buffer
-	home.Execute(context.Background(), &homeOutput, TestData{
+	home.Execute(context.Background(), &homeOutput, templator.TestData{
 		Title:   "Welcome",
 		Content: "Hello, World!",
 	})
@@ -40,7 +34,7 @@ func Example() {
 	// Get and execute team template
 	team, _ := reg.Get("team")
 	var teamOutput bytes.Buffer
-	team.Execute(context.Background(), &teamOutput, TestData{
+	team.Execute(context.Background(), &teamOutput, templator.TestData{
 		Title:   "Engineering",
 		Content: "Building amazing things",
 	})
