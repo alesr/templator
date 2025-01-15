@@ -7,14 +7,15 @@
 //   - Generated method: GetPathToTemplate()
 //
 // Usage:
-//   go run generate_methods.go [flags]
+//
+//	go run generate_methods.go [flags]
 //
 // Flags:
-//   -templates string
-//     	Directory containing the template files (default "templates")
-//   -out string
-//     	Output file for generated methods (default "./templator_methods.go")
-
+//
+//	-templates string
+//	  	Directory containing the template files (default "templates")
+//	-out string
+//	  	Output file for generated methods (default "./templator_methods.go")
 package main
 
 import (
@@ -73,7 +74,6 @@ func parseFlags() config {
 		"./templator_methods.go",
 		"output file for generated methods",
 	)
-
 	flag.Parse()
 	return config{*templateDir, *outputFile}
 }
