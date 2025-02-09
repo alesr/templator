@@ -1,6 +1,8 @@
 # Templator
 
 [![codecov](https://codecov.io/gh/alesr/templator/graph/badge.svg?token=HiYBMXeIbg)](https://codecov.io/gh/alesr/templator)
+[![Go Report Card](https://goreportcard.com/badge/github.com/alesr/templator)](https://goreportcard.com/report/github.com/alesr/templator)
+[![Go Reference](https://pkg.go.dev/badge/github.com/alesr/templator.svg)](https://pkg.go.dev/github.com/alesr/templator)
 
 A type-safe HTML template rendering engine for Go.
 
