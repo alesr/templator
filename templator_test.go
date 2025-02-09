@@ -83,6 +83,35 @@ func TestNewRegistry(t *testing.T) {
 	}
 }
 
+func TestRegistry_Get(t *testing.T) {
+	t.Parallel()
+
+	t.Run("can get templates concurrently", func(t *testing.T) {
+		fs := fstest.MapFS{
+			"custom/template1.html": &fstest.MapFile{
+				Data: []byte(testHTMLTemplate),
+			},
+		}
+
+		opts := []Option[TestData]{WithTemplatesPath[TestData]("custom")}
+
+		registry, err := NewRegistry(fs, opts...)
+		require.NoError(t, err)
+
+		var wg sync.WaitGroup
+
+		wg.Add(2)
+		for i := 0; i < 2; i++ {
+			go func(wg *sync.WaitGroup) {
+				defer wg.Done()
+				_, err := registry.Get("template1")
+				require.NoError(t, err)
+			}(&wg)
+		}
+		wg.Wait()
+	})
+}
+
 func TestHandler(t *testing.T) {
 	t.Parallel()
 
@@ -342,7 +371,7 @@ func TestRegistry_Options(t *testing.T) {
 	}
 }
 
-func TestWithFuncs(t *testing.T) {
+func TestWithTemplateFuncs(t *testing.T) {
 	t.Parallel()
 
 	funcMap := template.FuncMap{
