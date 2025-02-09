@@ -8,7 +8,7 @@ type ErrTemplateNotFound struct {
 }
 
 func (e ErrTemplateNotFound) Error() string {
-	return fmt.Sprintf("template %s not found", e.Name)
+	return fmt.Sprintf("template '%s' not found", e.Name)
 }
 
 // ErrTemplateExecution is returned when a template fails to execute.
@@ -18,7 +18,7 @@ type ErrTemplateExecution struct {
 }
 
 func (e ErrTemplateExecution) Error() string {
-	return fmt.Sprintf("failed to execute template %s: %v", e.Name, e.Err)
+	return fmt.Sprintf("failed to execute template '%s': '%v'", e.Name, e.Err)
 }
 
 func (e ErrTemplateExecution) Unwrap() error {

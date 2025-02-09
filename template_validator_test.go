@@ -92,6 +92,8 @@ func Test_validateField(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			err := validateField(tc.typ, tc.fieldPath)
 
 			if tc.wantErr {
