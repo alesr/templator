@@ -21,7 +21,7 @@ type ValidationError struct {
 }
 
 func (e *ValidationError) Error() string {
-	return fmt.Sprintf("template '%s' validation error: %s - %v", e.TemplateName, e.FieldPath, e.Err)
+	return fmt.Sprintf("template '%s' validation error: '%s' - '%s'", e.TemplateName, e.FieldPath, e.Err)
 }
 
 // validateTemplateFields analyzes template content and validates
