@@ -139,10 +139,3 @@ func (r *Registry[T]) Get(name string) (*Handler[T], error) {
 func (h *Handler[T]) Execute(ctx context.Context, w io.Writer, data T) error {
 	return h.tmpl.Execute(w, data)
 }
-
-// WithFuncs adds custom template functions to the handler.
-// Returns the handler for method chaining.
-func (h *Handler[T]) WithFuncs(funcMap template.FuncMap) *Handler[T] {
-	h.tmpl = h.tmpl.Funcs(funcMap)
-	return h
-}
