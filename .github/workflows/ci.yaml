@@ -14,11 +14,11 @@ jobs:
 
     strategy:
       matrix:
-        go-version: ['1.23'] 
+        go-version: ["1.23", "1.24"]
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4 
+        uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -51,12 +51,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4 
+        uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'  # Set a specific Go version here
+          go-version: "1.24"
 
       - name: Cache Go modules
         uses: actions/cache@v3
@@ -64,9 +64,9 @@ jobs:
           path: |
             ~/.cache/go-build
             /go/pkg/mod
-          key: ${{ runner.os }}-go-1.23-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-1.24-${{ hashFiles('**/go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-go-1.23-
+            ${{ runner.os }}-go-1.24-
 
       - name: Verify go.mod and go.sum
         run: go mod verify
