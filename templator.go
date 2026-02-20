@@ -7,6 +7,7 @@ package templator
 
 import (
 	"context"
+	"errors"
 	"html/template"
 	"io"
 	"io/fs"
@@ -134,8 +135,39 @@ func (r *Registry[T]) Get(name string) (*Handler[T], error) {
 	return handler, nil
 }
 
+var ErrNilContext = errors.New("nil context")
+
 // Execute renders the template with the provided data and writes the output to the writer.
-// The context parameter can be used for cancellation and deadline control.
+// Context cancellation and deadlines are checked before rendering, on each write,
+// and after rendering. Cancellation is best-effort at write boundaries.
 func (h *Handler[T]) Execute(ctx context.Context, w io.Writer, data T) error {
-	return h.tmpl.Execute(w, data)
+	if ctx == nil {
+		return ErrTemplateExecution{Name: h.tmpl.Name(), Err: ErrNilContext}
+	}
+
+	wrappedWriter := contextWriter{Writer: w, ctx: ctx}
+
+	if err := h.tmpl.Execute(wrappedWriter, data); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ErrTemplateExecution{Name: h.tmpl.Name(), Err: ctxErr}
+		}
+		return ErrTemplateExecution{Name: h.tmpl.Name(), Err: err}
+	}
+
+	if err := ctx.Err(); err != nil {
+		return ErrTemplateExecution{Name: h.tmpl.Name(), Err: err}
+	}
+	return nil
+}
+
+type contextWriter struct {
+	io.Writer
+	ctx context.Context
+}
+
+func (w contextWriter) Write(p []byte) (int, error) {
+	if err := w.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return w.Writer.Write(p)
 }
