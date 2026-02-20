@@ -3,12 +3,15 @@ package templator
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"html/template"
+	"io"
 	"strings"
 	"sync"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -70,7 +73,7 @@ func TestNewRegistry(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := NewRegistry[TestData](tt.fs, tt.opts...)
+			got, err := NewRegistry(tt.fs, tt.opts...)
 			if tt.wantErr {
 				require.Error(t, err)
 				require.Nil(t, got)
@@ -99,16 +102,22 @@ func TestRegistry_Get(t *testing.T) {
 		require.NoError(t, err)
 
 		var wg sync.WaitGroup
+		errs := make(chan error, 2)
 
 		wg.Add(2)
-		for i := 0; i < 2; i++ {
+		for range 2 {
 			go func(wg *sync.WaitGroup) {
 				defer wg.Done()
 				_, err := registry.Get("template1")
-				require.NoError(t, err)
+				errs <- err
 			}(&wg)
 		}
 		wg.Wait()
+		close(errs)
+
+		for err := range errs {
+			require.NoError(t, err)
+		}
 	})
 }
 
@@ -147,7 +156,7 @@ func TestHandler(t *testing.T) {
 			require.NoError(t, err)
 
 			var buf bytes.Buffer
-			err = handler.Execute(context.Background(), &buf, tt.data)
+			err = handler.Execute(context.TODO(), &buf, tt.data)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -159,6 +168,131 @@ func TestHandler(t *testing.T) {
 			assert.Contains(t, buf.String(), tt.data.Content)
 		})
 	}
+}
+
+type cancelOnFirstWriteWriter struct {
+	w        io.Writer
+	cancel   context.CancelFunc
+	canceled bool
+}
+
+func (w *cancelOnFirstWriteWriter) Write(p []byte) (int, error) {
+	n, err := w.w.Write(p)
+	if !w.canceled {
+		w.canceled = true
+		w.cancel()
+	}
+	return n, err
+}
+
+type cancelAndFailWriter struct {
+	cancel context.CancelFunc
+}
+
+func (w cancelAndFailWriter) Write(_ []byte) (int, error) {
+	w.cancel()
+	return 0, io.ErrClosedPipe
+}
+
+func TestHandler_ExecuteContext(t *testing.T) {
+	t.Parallel()
+
+	fs := fstest.MapFS{
+		"templates/test.html": &fstest.MapFile{
+			Data: []byte(testHTMLTemplate),
+		},
+	}
+
+	reg, err := NewRegistry[TestData](fs)
+	require.NoError(t, err)
+
+	handler, err := reg.Get("test")
+	require.NoError(t, err)
+
+	t.Run("returns cancellation error when context already canceled", func(t *testing.T) {
+		t.Parallel()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		var buf bytes.Buffer
+		err := handler.Execute(ctx, &buf, TestData{Title: "Title", Content: "Content"})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, context.Canceled)
+
+		var execErr ErrTemplateExecution
+		require.ErrorAs(t, err, &execErr)
+	})
+
+	t.Run("returns error for nil context", func(t *testing.T) {
+		t.Parallel()
+
+		var nilCtx context.Context
+		var buf bytes.Buffer
+		err := handler.Execute(nilCtx, &buf, TestData{Title: "Title", Content: "Content"})
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, ErrNilContext))
+
+		var execErr ErrTemplateExecution
+		require.ErrorAs(t, err, &execErr)
+	})
+
+	t.Run("returns cancellation error when canceled during write", func(t *testing.T) {
+		t.Parallel()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		var buf bytes.Buffer
+		writer := &cancelOnFirstWriteWriter{w: &buf, cancel: cancel}
+
+		err := handler.Execute(ctx, writer, TestData{Title: "Title", Content: "Content"})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, context.Canceled)
+
+		var execErr ErrTemplateExecution
+		require.ErrorAs(t, err, &execErr)
+	})
+
+	t.Run("returns deadline exceeded when context deadline has passed", func(t *testing.T) {
+		t.Parallel()
+
+		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+		defer cancel()
+
+		var buf bytes.Buffer
+		err := handler.Execute(ctx, &buf, TestData{Title: "Title", Content: "Content"})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, context.DeadlineExceeded)
+
+		var execErr ErrTemplateExecution
+		require.ErrorAs(t, err, &execErr)
+	})
+
+	t.Run("prefers context cancellation over writer error", func(t *testing.T) {
+		t.Parallel()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		err := handler.Execute(ctx, cancelAndFailWriter{cancel: cancel}, TestData{Title: "Title", Content: "Content"})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, context.Canceled)
+		assert.NotErrorIs(t, err, io.ErrClosedPipe)
+
+		var execErr ErrTemplateExecution
+		require.ErrorAs(t, err, &execErr)
+	})
+
+	t.Run("executes normally with active context", func(t *testing.T) {
+		t.Parallel()
+
+		var buf bytes.Buffer
+		err := handler.Execute(context.Background(), &buf, TestData{Title: "Title", Content: "Content"})
+		require.NoError(t, err)
+		assert.Contains(t, buf.String(), "Title")
+		assert.Contains(t, buf.String(), "Content")
+	})
 }
 
 func TestGet_Error(t *testing.T) {
@@ -241,7 +375,7 @@ func TestGet_Error(t *testing.T) {
 			require.NotNil(t, handler)
 
 			var buf bytes.Buffer
-			err = handler.Execute(context.Background(), &buf, tt.data)
+			err = handler.Execute(context.TODO(), &buf, tt.data)
 			if tt.wantExecErr {
 				require.Error(t, err, "expected execution error")
 				return
@@ -272,7 +406,7 @@ func TestHandler_WithFuncs(t *testing.T) {
 	require.NoError(t, err)
 
 	var buf bytes.Buffer
-	err = handler.Execute(context.Background(), &buf, TestData{Title: "hello"})
+	err = handler.Execute(context.TODO(), &buf, TestData{Title: "hello"})
 	require.NoError(t, err)
 	assert.Equal(t, "HELLO", buf.String())
 }
@@ -291,28 +425,50 @@ func TestConcurrentAccess(t *testing.T) {
 
 	var wg sync.WaitGroup
 	numGoroutines := 10
+	errs := make(chan error, numGoroutines)
 
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
 
 			handler, err := reg.Get("concurrent")
-			require.NoError(t, err)
+			if err != nil {
+				errs <- err
+				return
+			}
 
 			var buf bytes.Buffer
 			data := TestData{
 				Title:   fmt.Sprintf("Title %d", i),
 				Content: fmt.Sprintf("Content %d", i),
 			}
-			err = handler.Execute(context.Background(), &buf, data)
-			require.NoError(t, err)
-			assert.Contains(t, buf.String(), data.Title)
-			assert.Contains(t, buf.String(), data.Content)
+			err = handler.Execute(context.TODO(), &buf, data)
+			if err != nil {
+				errs <- err
+				return
+			}
+
+			if !strings.Contains(buf.String(), data.Title) {
+				errs <- fmt.Errorf("output missing title %q", data.Title)
+				return
+			}
+
+			if !strings.Contains(buf.String(), data.Content) {
+				errs <- fmt.Errorf("output missing content %q", data.Content)
+				return
+			}
+
+			errs <- nil
 		}(i)
 	}
 
 	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		require.NoError(t, err)
+	}
 }
 
 func TestRegistry_Options(t *testing.T) {
@@ -356,7 +512,7 @@ func TestRegistry_Options(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			reg, err := NewRegistry[TestData](tt.fs, tt.opts...)
+			reg, err := NewRegistry(tt.fs, tt.opts...)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expectedPath, reg.config.path) // Updated from reg.path to reg.config.path
 
@@ -379,7 +535,7 @@ func TestWithTemplateFuncs(t *testing.T) {
 		"lower": strings.ToLower,
 	}
 
-	reg, err := NewRegistry[TestData](fstest.MapFS{}, WithTemplateFuncs[TestData](funcMap))
+	reg, err := NewRegistry(fstest.MapFS{}, WithTemplateFuncs[TestData](funcMap))
 	require.NoError(t, err)
 	require.Equal(t, funcMap, reg.config.funcMap)
 }
@@ -451,7 +607,7 @@ func TestWithFieldValidation(t *testing.T) {
 
 			require.NoError(t, err)
 			var buf bytes.Buffer
-			err = handler.Execute(context.Background(), &buf, tt.data)
+			err = handler.Execute(context.TODO(), &buf, tt.data)
 			require.NoError(t, err)
 		})
 	}
