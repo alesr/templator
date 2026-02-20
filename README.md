@@ -3,6 +3,14 @@
 [![codecov](https://codecov.io/gh/alesr/templator/graph/badge.svg?token=HiYBMXeIbg)](https://codecov.io/gh/alesr/templator)
 [![Go Report Card](https://goreportcard.com/badge/github.com/alesr/templator)](https://goreportcard.com/report/github.com/alesr/templator)
 [![Go Reference](https://pkg.go.dev/badge/github.com/alesr/templator.svg)](https://pkg.go.dev/github.com/alesr/templator)
+[![Go Version](https://img.shields.io/badge/Go-%3E%3D1.24-00ADD8?logo=go&logoColor=white)](https://go.dev/)
+[![License: MIT](https://img.shields.io/github/license/alesr/templator?color=blue)](https://github.com/alesr/templator/blob/main/LICENSE)
+[![Latest Release](https://img.shields.io/github/v/release/alesr/templator)](https://github.com/alesr/templator/releases/latest)
+
+A type-safe HTML template rendering engine for Go.
+
+## Table of Contents
+...
 
 A type-safe HTML template rendering engine for Go.
 
