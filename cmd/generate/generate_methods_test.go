@@ -16,7 +16,6 @@ import (
 var osArgsMu sync.Mutex
 
 func TestParseFlags(t *testing.T) {
-	// Do not run this test in parallel since it modifies global state
 	osArgsMu.Lock()
 	oldArgs := os.Args
 	osArgsMu.Unlock()
@@ -32,18 +31,34 @@ func TestParseFlags(t *testing.T) {
 		args          []string
 		wantTemplates string
 		wantOutput    string
+		wantPackage   string
+		wantErr       string
 	}{
 		{
 			name:          "default values",
 			args:          []string{"cmd"},
 			wantTemplates: "templates",
-			wantOutput:    "./templator_methods.go",
+			wantOutput:    "./templator_accessors_gen.go",
+			wantPackage:   "main",
 		},
 		{
 			name:          "custom values",
 			args:          []string{"cmd", "-templates", "custom/templates", "-out", "custom_output.go"},
 			wantTemplates: "custom/templates",
 			wantOutput:    "custom_output.go",
+			wantPackage:   "main",
+		},
+		{
+			name:          "custom package",
+			args:          []string{"cmd", "-package", "myapp"},
+			wantTemplates: "templates",
+			wantOutput:    "./templator_accessors_gen.go",
+			wantPackage:   "myapp",
+		},
+		{
+			name:    "rejects empty package",
+			args:    []string{"cmd", "-package", ""},
+			wantErr: "requires non-empty -package",
 		},
 	}
 
@@ -53,63 +68,62 @@ func TestParseFlags(t *testing.T) {
 			os.Args = tt.args
 			osArgsMu.Unlock()
 
-			cfg := parseFlags()
+			cfg, err := parseFlags()
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				return
+			}
+
+			require.NoError(t, err)
 			assert.Equal(t, tt.wantTemplates, cfg.templateDir)
 			assert.Equal(t, tt.wantOutput, cfg.outputFile)
+			assert.Equal(t, tt.wantPackage, cfg.packageName)
 		})
 	}
 }
 
 func TestLoadTemplateGenerator(t *testing.T) {
-	tmpl := loadTemplateGenerator()
+	tmpl, err := loadTemplateGenerator()
+	require.NoError(t, err)
 	require.NotNil(t, tmpl)
 
 	var buf strings.Builder
-	err := tmpl.ExecuteTemplate(&buf, "header", nil)
+	err = tmpl.ExecuteTemplate(&buf, "header", headerData{PackageName: "templator"})
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "package templator")
 }
 
 func TestGenerateMethods(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "templator_test_*")
-	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
-	templates := map[string]string{
-		"index.html":         "<html></html>",
-		"users/profile.html": "<html></html>",
-	}
-
-	for path, content := range templates {
-		fullPath := filepath.Join(tempDir, path)
-		err := os.MkdirAll(filepath.Dir(fullPath), 0755)
-		require.NoError(t, err)
-
-		err = os.WriteFile(fullPath, []byte(content), 0644)
-		require.NoError(t, err)
-	}
+	writeTemplateFixture(t, tempDir, "index.html")
+	writeTemplateFixture(t, tempDir, "users/profile.html")
 
 	outputFile := filepath.Join(tempDir, "output.go")
 	cfg := config{
-		templateDir: tempDir,
-		outputFile:  outputFile,
+		templateDir:     tempDir,
+		outputFile:      outputFile,
+		packageName:     "myapp",
+		templatorImport: "github.com/alesr/templator",
 	}
 
-	tmpl := loadTemplateGenerator()
-	generateMethods(cfg, tmpl)
+	tmpl, err := loadTemplateGenerator()
+	require.NoError(t, err)
+
+	err = generateMethods(cfg, tmpl)
+	require.NoError(t, err)
 
 	content, err := os.ReadFile(outputFile)
 	require.NoError(t, err)
 
 	generatedCode := string(content)
-	expectedMethods := []string{
-		"GetIndex",
-		"GetUsersProfile",
-	}
-
-	for _, method := range expectedMethods {
-		assert.Contains(t, generatedCode, method)
-	}
+	assert.Contains(t, generatedCode, "package myapp")
+	assert.Contains(t, generatedCode, "import \"github.com/alesr/templator\"")
+	assert.Contains(t, generatedCode, "type TemplateAccessors[T any] struct")
+	assert.Contains(t, generatedCode, "func NewTemplateAccessors[T any](registry *templator.Registry[T]) *TemplateAccessors[T]")
+	assert.Contains(t, generatedCode, "func (r *TemplateAccessors[T]) GetIndex() (*templator.Handler[T], error)")
+	assert.Contains(t, generatedCode, "func (r *TemplateAccessors[T]) GetUsersProfile() (*templator.Handler[T], error)")
 }
 
 func TestBuildTemplateData(t *testing.T) {
@@ -141,4 +155,15 @@ func TestBuildTemplateData(t *testing.T) {
 			assert.Equal(t, tt.wantPath, data.TemplateName)
 		})
 	}
+}
+
+func writeTemplateFixture(t *testing.T, rootDir, relativePath string) {
+	t.Helper()
+
+	fullPath := filepath.Join(rootDir, relativePath)
+	err := os.MkdirAll(filepath.Dir(fullPath), 0o755)
+	require.NoError(t, err)
+
+	err = os.WriteFile(fullPath, []byte("<html></html>"), 0o644)
+	require.NoError(t, err)
 }
