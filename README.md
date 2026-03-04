@@ -12,9 +12,11 @@ A type-safe HTML template rendering engine for Go.
 ## Table of Contents
 
 - [Problem Statement](#problem-statement)
+- [What Templator Solves](#what-templator-solves)
 - [Features](#features)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
+- [How It All Works Together](#how-it-all-works-together)
 - [Usage Examples](#usage-examples)
 - [Template Generation](#template-generation)
 - [Configuration](#configuration)
@@ -22,59 +24,53 @@ A type-safe HTML template rendering engine for Go.
 - [Contributing](#contributing)
 - [License](#license)
 
-
 ## Problem Statement
 
-Go's built-in template package lacks type safety, which can lead to runtime errors when template data doesn't match what the template expects. For example:
+Go's built-in `html/template` package is great, but it has one big weakness: no type safety.
 
 ```go
-// Traditional approach with Go templates
 tmpl := template.Must(template.ParseFiles("home.html"))
 
-// This compiles but will fail at runtime if the template expects different fields
-tmpl.Execute(w, struct {
-    WrongField string
-    MissingRequired int
+// this compiles fine...
+err := tmpl.Execute(w, struct {
+    WrongField   string
+    MissingStuff int
 }{})
-
-// No compile-time checks for:
-// - Missing required fields
-// - Wrong field types
-// - Typos in field names
 ```
 
-Templator solves this by providing compile-time type checking for your templates:
+You only find out at runtime that your data does not match what the template expects: missing fields, typos, wrong types, and so on.
+
+## What Templator Solves
+
+Templator wraps `html/template` and gives you compile-time guarantees with generics.
+
+You define your data once:
 
 ```go
-// Define your template data type
 type HomeData struct {
     Title   string
     Content string
 }
-
-// Initialize registry with type parameter
-reg, _ := templator.NewRegistry[HomeData](fs)
-
-// Get type-safe handler and execute template
-home, _ := reg.Get("home")
-home.Execute(ctx, w, HomeData{
-    Title: "Welcome",
-    Content: "Hello",
-})
-
-// Won't compile - wrong data structure
-home.Execute(ctx, w, struct{
-    WrongField string
-}{})
 ```
+
+Then template execution is type-checked against the template by the compiler.
+
+You can get a handler in two equivalent ways:
+
+1. Simple and direct: `reg.Get("home")`
+2. IDE-friendly codegen: `tpl.GetHome()`
+
+Both return `*Handler[T]` with the same behavior. The difference is only developer experience.
 
 ## Features
 
-- Type-safe template execution with generics
-- Concurrent-safe template management
-- Custom template functions support
-- Clean and simple API
-- HTML escaping by default
+- Compile-time type safety via generics
+- Optional field validation (catches mismatches when loading templates)
+- Concurrent-safe template management with `fs.FS` support
+- Custom template functions
+- Context cancellation and deadline propagation
+- Minimal overhead on top of `html/template`
+- Small API with optional code generation helpers
 
 ## Installation
 
@@ -82,7 +78,7 @@ home.Execute(ctx, w, struct{
 go get github.com/alesr/templator@latest
 ```
 
-Install the code generator binary (optional):
+Optional generator binary:
 
 ```bash
 go install github.com/alesr/templator/cmd/generate@latest
@@ -101,29 +97,24 @@ import (
     "github.com/alesr/templator"
 )
 
-// Define your template data
 type HomeData struct {
     Title   string
     Content string
 }
 
 func main() {
-    // Use the filesystem of your choice
     fs := os.DirFS(".")
 
-    // Initialize registry with your data type
     reg, err := templator.NewRegistry[HomeData](fs)
     if err != nil {
         log.Fatal(err)
     }
 
-    // Get type-safe handler for home template
     home, err := reg.Get("home")
     if err != nil {
         log.Fatal(err)
     }
 
-    // Execute template with proper data
     err = home.Execute(context.Background(), os.Stdout, HomeData{
         Title:   "Welcome",
         Content: "Hello, World!",
@@ -134,51 +125,48 @@ func main() {
 }
 ```
 
+## How It All Works Together
+
+1. Define a data struct (this is your type parameter `T`).
+2. Create a `Registry[T]` for your filesystem.
+3. Get a `Handler[T]` either with `reg.Get("name")` or generated accessors like `tpl.GetName()`.
+4. Execute with `handler.Execute(ctx, writer, data)`.
+5. Optionally enable field validation, custom functions, or a different templates path.
+
+Everything is still powered by the standard `html/template` package.
+
 ## Usage Examples
 
-### Type-Safe Templates
+### Type-Safe Templates (different data per template)
 
 ```go
-// Define different data types for different templates
-type HomeData struct {
-    Title    string
-    Content  string
-}
+type HomeData struct{ Title, Content string }
+type AboutData struct{ Company string; Year int }
 
-type AboutData struct {
-    Company  string
-    Year     int
-}
+homeReg, _ := templator.NewRegistry[HomeData](fs)
+aboutReg, _ := templator.NewRegistry[AboutData](fs)
 
-// Create registries for different template types
-homeReg := templator.NewRegistry[HomeData](fs)
-aboutReg := templator.NewRegistry[AboutData](fs)
-
-// Get handlers
 home, _ := homeReg.Get("home")
 about, _ := aboutReg.Get("about")
 
-// Type safety enforced at compile time
-home.Execute(ctx, w, HomeData{...})  // ✅ Compiles
-home.Execute(ctx, w, AboutData{...}) // ❌ Compile error
+home.Execute(ctx, w, HomeData{...})  // ok
+home.Execute(ctx, w, AboutData{...}) // trying to pass about data to the home tmpl is caught by the compiler
 ```
 
-### Using Template Functions
+### Custom Template Functions
 
 ```go
-// Define your custom functions
 funcMap := template.FuncMap{
     "upper": strings.ToUpper,
-    "lower": strings.ToLower,
 }
 
-// Create registry with functions
-reg, err := templator.NewRegistry[PageData](fs, 
-    templator.WithTemplateFuncs[PageData](funcMap))
-
-// Use functions in your templates:
-// <h1>{{.Title | upper}}</h1>
+reg, _ := templator.NewRegistry[PageData](
+    fs,
+    templator.WithTemplateFuncs[PageData](funcMap),
+)
 ```
+
+Use in templates as usual: `{{.Title | upper}}`
 
 ### File System Support
 
@@ -186,74 +174,48 @@ reg, err := templator.NewRegistry[PageData](fs,
 // Embedded FS
 //go:embed templates/*
 var embedFS embed.FS
-reg := templator.NewRegistry[HomeData](embedFS)
 
-// OS File System
-reg := templator.NewRegistry[HomeData](os.DirFS("./templates"))
+reg, _ := templator.NewRegistry[HomeData](embedFS)
 
-// In-Memory (testing)
-fsys := fstest.MapFS{
-    "templates/home.html": &fstest.MapFile{
-        Data: []byte(`<h1>{{.Title}}</h1>`),
-    },
-}
-reg := templator.NewRegistry[HomeData](fsys)
+// os dir
+reg, _ = templator.NewRegistry[HomeData](os.DirFS("templates"))
+
+// in-memory for tests
+fsys := fstest.MapFS{ /* ... */ }
+reg, _ = templator.NewRegistry[HomeData](fsys)
 ```
 
-### Field Validation
+### Field Validation (catches errors early)
 
 ```go
 type ArticleData struct {
-    Title    string    // Only these two fields
-    Content  string    // are allowed in templates
+    Title   string
+    Content string
 }
 
-// Enable validation during registry creation
-reg := templator.NewRegistry[ArticleData](
+reg, _ := templator.NewRegistry[ArticleData](
     fs,
     templator.WithFieldValidation(ArticleData{}),
 )
-
-// Example templates:
-
-// valid.html:
-// <h1>{{.Title}}</h1>           // ✅ OK - Title exists in ArticleData
-// <p>{{.Content}}</p>           // ✅ OK - Content exists in ArticleData
-
-// invalid.html:
-// <h1>{{.Author}}</h1>          // ❌ Error - Author field doesn't exist
-// <p>{{.PublishedAt}}</p>       // ❌ Error - PublishedAt field doesn't exist
-
-// Using the templates:
-handler, err := reg.Get("valid")    // ✅ Success - all fields exist
-if err != nil {
-    log.Fatal(err)
-}
-
-handler, err := reg.Get("invalid")  // ❌ Error: "template 'invalid' validation error: Author - field 'Author' not found in type ArticleData"
-
-// The validation error provides:
-// - Template name
-// - Invalid field path
-// - Detailed error message
-if validErr, ok := err.(*templator.ValidationError); ok {
-    fmt.Printf("Template: %s\n", validErr.TemplateName)
-    fmt.Printf("Invalid field: %s\n", validErr.FieldPath)
-    fmt.Printf("Error: %v\n", validErr.Err)
-}
 ```
 
-This validation happens when loading the template, not during execution, helping catch field mismatches early in development.
+If a template references `{{.Author}}` but `Author` does not exist in `ArticleData`, `Get(...)` returns a validation error.
 
 ## Template Generation
 
-Generate accessors in your package:
+Want `tpl.GetHome()` instead of string lookup? Use the generator.
 
 ```bash
 go run github.com/alesr/templator/cmd/generate \
-  -package myapp \
+  -package main \
   -templates ./templates \
   -out ./templator_accessors_gen.go
+```
+
+You can also wire it into `go generate`:
+
+```go
+//go:generate go run github.com/alesr/templator/cmd/generate -package main -templates ./templates -out ./templator_accessors_gen.go
 ```
 
 Then use the generated wrapper:
@@ -261,41 +223,22 @@ Then use the generated wrapper:
 ```go
 reg, _ := templator.NewRegistry[HomeData](fs)
 tpl := NewTemplateAccessors(reg)
+
 home, _ := tpl.GetHome()
+header, _ := tpl.GetComponentsHeader()
 ```
 
-Template names are mapped to wrapper methods using title-cased path components:
+`components/header.html` maps to `GetComponentsHeader`.
 
-```zsh
-templates/
-├── home.html           -> tpl.GetHome()
-├── about.html          -> tpl.GetAbout()
-└── components/
-    └── header.html     -> tpl.GetComponentsHeader()
-```
-
-This creates a generated file (for example `templator_accessors_gen.go`) with wrapper methods such as:
-
-```go
-func (r *TemplateAccessors[T]) GetHome() (*templator.Handler[T], error) {
-    return r.registry.Get("home")
-}
-
-func (r *TemplateAccessors[T]) GetAbout() (*templator.Handler[T], error) {
-    return r.registry.Get("about")
-}
-```
-
-This file is automatically generated and should not be manually edited.
+For full generator docs (flags, behavior, and examples), see [`cmd/generate/README.md`](cmd/generate/README.md).
 
 ## Configuration
 
 ```go
 reg, err := templator.NewRegistry[HomeData](
     fs,
-    // Custom template directory
     templator.WithTemplatesPath[HomeData]("views"),
-    // Enable field validation
+    templator.WithTemplateFuncs[HomeData](funcMap),
     templator.WithFieldValidation(HomeData{}),
 )
 ```
@@ -303,6 +246,10 @@ reg, err := templator.NewRegistry[HomeData](
 ## Development Requirements
 
 - Go 1.24 or higher
+
+## Contributing
+
+Contributions are welcome.
 
 ## License
 
