@@ -26,8 +26,8 @@ func (e *ValidationError) Error() string {
 
 // validateTemplateFields analyzes template content and validates
 // that all referenced fields exist in the data type
-func validateTemplateFields[T any](name, content string, dataType T) error {
-	typ := reflect.TypeOf(dataType)
+func validateTemplateFields[T any](name, content string) error {
+	typ := reflect.TypeFor[T]()
 	fields := extractTemplateFields(content)
 
 	for _, field := range fields {
