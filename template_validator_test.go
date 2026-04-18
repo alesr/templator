@@ -57,6 +57,7 @@ func Test_validateField(t *testing.T) {
 	type testStruct struct {
 		testField string
 	}
+	_ = testStruct{testField: ""}.testField // field name must exist for FieldByName tests; appease U1000
 
 	testCases := []struct {
 		name      string
@@ -72,19 +73,19 @@ func Test_validateField(t *testing.T) {
 		},
 		{
 			name:      "non-struct type",
-			typ:       reflect.TypeOf(""),
+			typ:       reflect.TypeFor[string](),
 			fieldPath: "testField",
 			wantErr:   true,
 		},
 		{
 			name:      "field is a struct",
-			typ:       reflect.TypeOf(testStruct{}),
+			typ:       reflect.TypeFor[testStruct](),
 			fieldPath: "testField",
 			wantErr:   false,
 		},
 		{
 			name:      "field is a pointer",
-			typ:       reflect.TypeOf(&testStruct{}),
+			typ:       reflect.TypeFor[*testStruct](),
 			fieldPath: "testField",
 			wantErr:   false,
 		},

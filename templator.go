@@ -117,9 +117,9 @@ func (r *Registry[T]) Get(name string) (*Handler[T], error) {
 		return nil, err
 	}
 
-	// Validate fields if enabled - validate content before parsing
+	// Validate fields if enabled, validate content before parsing
 	if r.config.validateFields {
-		if err := validateTemplateFields(name, string(content), r.config.validationModel); err != nil {
+		if err := validateTemplateFields[T](name, string(content)); err != nil {
 			return nil, err
 		}
 	}
