@@ -9,6 +9,8 @@
 
 A type-safe HTML template rendering engine for Go.
 
+Full documentation: [stdout.alesr.me/templator-docs](https://stdout.alesr.me/templator-docs/).
+
 ## Table of Contents
 
 - [Problem Statement](#problem-statement)
