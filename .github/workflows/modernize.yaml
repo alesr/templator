@@ -1,0 +1,23 @@
+name: modernize
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Execution mode"
+        required: true
+        default: "fix"
+        type: choice
+        options:
+          - fix
+          - check
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  modernize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: alesr/gomodern@v0.2.0
+        with:
+          mode: ${{ inputs.mode }}
+          create-pr: "true"
